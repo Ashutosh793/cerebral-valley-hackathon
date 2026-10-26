@@ -12,6 +12,8 @@
   video { width: 100%; height: auto; display: block; border-radius: 10px; }
   #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
   #say { font-size: 26px; margin: 12px 0; min-height: 70px; }
+  #warn { background: #b00020; font-size: 24px; border-radius: 10px; }
+  #warn:not(:empty) { padding: 12px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -25,6 +27,7 @@
 <button id="talk">Talk</button>
 <button id="start">Start</button>
 <div id="say"></div>
+<div id="warn"></div>
 <div id="wrap">
   <video id="cam" autoplay playsinline muted></video>
   <canvas id="overlay"></canvas>
@@ -61,11 +64,13 @@ async function tick() {
     const res = await fetch("/guide", { method: "POST", body: form });
     const out = await res.json();
     show(out.box);
-    if (out.instruction !== lastText) {
-      lastText = out.instruction;
+    document.getElementById("warn").textContent = out.warning ? "WARNING: " + out.warning : "";
+    const text = out.warning ? out.warning : out.instruction;
+    if (text !== lastText) {
+      lastText = text;
       say.textContent = out.instruction;
       speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(out.instruction);
+      const u = new SpeechSynthesisUtterance(text);
       u.lang = langCode;
       speechSynthesis.speak(u);
     }

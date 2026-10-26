@@ -17,8 +17,11 @@ def guide(frame: UploadFile = File(...), goal: str = Form(...), language: str = 
 
     prompt = (
         f'User goal: "{goal}". Look at the screen and give ONE next step for an older adult. '
+        f'Also check for scam signs: urgent threats, gift cards, remote access, '
+        f'sharing OTP codes or passwords, unknown payment recipients, fake prizes or fake tech support. '
         f'Reply only with JSON: {{"instruction": "one short sentence in {language}", '
-        f'"target": "short English description of the button or field to use"}}'
+        f'"target": "short English description of the button or field to use", '
+        f'"warning": null if the screen looks safe, otherwise "one short warning sentence in {language}"}}'
     )
     r = client.chat.completions.create(
         model="muse-spark-1.2",
@@ -42,7 +45,10 @@ def guide(frame: UploadFile = File(...), goal: str = Form(...), language: str = 
         x1, y1, x2, y2, w, h = map(float, m.groups())
         box = [x1 / w, y1 / h, x2 / w, y2 / h]  # 0 to 1, so any screen size works
 
-    return {"instruction": data["instruction"], "target": data["target"], "box": box}
+    warning = data.get("warning")
+    if not warning or str(warning).strip().lower() == "null":
+        warning = None
+    return {"instruction": data["instruction"], "target": data["target"], "box": box, "warning": warning}
 
 from fastapi.responses import FileResponse
 
