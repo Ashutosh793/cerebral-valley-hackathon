@@ -1,0 +1,5 @@
+model_list:
+  - model_name: muse-voice-transcribe
+    litellm_params:
+      model: meta/muse-voice-transcribe-1.0
+      api_key: os.environ/META_API_KEY
