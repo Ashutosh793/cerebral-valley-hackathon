@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Guide</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 12px; background: #111; color: #fff; }
+  select, input, button { font-size: 20px; padding: 12px; margin: 6px 0; width: 100%; box-sizing: border-box; }
+  button { background: #1a73e8; color: #fff; border: 0; border-radius: 10px; }
+  #wrap { position: relative; margin-top: 8px; }
+  video { width: 100%; height: auto; display: block; border-radius: 10px; }
+  #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  #say { font-size: 26px; margin: 12px 0; min-height: 70px; }
+</style>
+</head>
+<body>
+<select id="lang">
+  <option value="English|en-US">English</option>
+  <option value="Hindi|hi-IN">Hindi</option>
+  <option value="Spanish|es-ES">Spanish</option>
+  <option value="French|fr-FR">French</option>
+</select>
+<input id="goal" placeholder="What do you want to do?">
+<button id="start">Start</button>
+<div id="say"></div>
+<div id="wrap">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+<canvas id="grab" style="display:none"></canvas>
+<script>
+const cam = document.getElementById("cam");
+const overlay = document.getElementById("overlay");
+const grab = document.getElementById("grab");
+const say = document.getElementById("say");
+let busy = false, lastText = "", timer = null;
+
+document.getElementById("start").onclick = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  cam.srcObject = stream;
+  speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  if (timer) clearInterval(timer);
+  timer = setInterval(tick, 2000);
+};
+
+async function tick() {
+  if (busy || !cam.videoWidth) return;
+  busy = true;
+  try {
+    grab.width = 640;
+    grab.height = Math.round(cam.videoHeight * 640 / cam.videoWidth);
+    grab.getContext("2d").drawImage(cam, 0, 0, grab.width, grab.height);
+    const blob = await new Promise(res => grab.toBlob(res, "image/jpeg", 0.7));
+    const [langName, langCode] = document.getElementById("lang").value.split("|");
+    const form = new FormData();
+    form.append("frame", blob, "frame.jpg");
+    form.append("goal", document.getElementById("goal").value || "help me use this screen");
+    form.append("language", langName);
+    const res = await fetch("/guide", { method: "POST", body: form });
+    const out = await res.json();
+    show(out.box);
+    if (out.instruction !== lastText) {
+      lastText = out.instruction;
+      say.textContent = out.instruction;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(out.instruction);
+      u.lang = langCode;
+      speechSynthesis.speak(u);
+    }
+  } catch (e) { console.log(e); }
+  busy = false;
+}
+
+function show(box) {
+  overlay.width = cam.clientWidth;
+  overlay.height = cam.clientHeight;
+  const g = overlay.getContext("2d");
+  g.clearRect(0, 0, overlay.width, overlay.height);
+  if (!box) return;
+  g.strokeStyle = "gold";
+  g.lineWidth = 6;
+  g.strokeRect(box[0] * overlay.width, box[1] * overlay.height,
+               (box[2] - box[0]) * overlay.width, (box[3] - box[1]) * overlay.height);
+}
+</script>
+</body>
+</html>
