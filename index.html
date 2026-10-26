@@ -22,6 +22,7 @@
   <option value="French|fr-FR">French</option>
 </select>
 <input id="goal" placeholder="What do you want to do?">
+<button id="talk">Talk</button>
 <button id="start">Start</button>
 <div id="say"></div>
 <div id="wrap">
@@ -83,6 +84,37 @@ function show(box) {
   g.strokeRect(box[0] * overlay.width, box[1] * overlay.height,
                (box[2] - box[0]) * overlay.width, (box[3] - box[1]) * overlay.height);
 }
+let rec = null;
+document.getElementById("talk").onclick = async () => {
+  const btn = document.getElementById("talk");
+  if (!rec) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    const chunks = [];
+    proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+    rec = { stream, ctx, chunks };
+    btn.textContent = "Stop";
+  } else {
+    rec.stream.getTracks().forEach(t => t.stop());
+    await rec.ctx.close();
+    const total = rec.chunks.reduce((n, c) => n + c.length, 0);
+    const pcm = new Int16Array(total);
+    let o = 0;
+    for (const c of rec.chunks) for (let i = 0; i < c.length; i++) pcm[o++] = Math.max(-1, Math.min(1, c[i])) * 32767;
+    rec = null;
+    btn.textContent = "Listening...";
+    const langName = document.getElementById("lang").value.split("|")[0];
+    const res = await fetch("/transcribe?language=" + langName, { method: "POST", body: pcm.buffer });
+    const out = await res.json();
+    document.getElementById("goal").value = out.text;
+    btn.textContent = "Talk";
+  }
+};
 </script>
 </body>
 </html>

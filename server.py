@@ -49,3 +49,39 @@ from fastapi.responses import FileResponse
 @app.get("/")
 def index():
     return FileResponse("index.html")
+
+
+import asyncio, websockets
+from fastapi import Request
+
+@app.post("/transcribe")
+async def transcribe(request: Request, language: str = "English"):
+    pcm = await request.body()  # mono PCM16 at 16000 Hz
+    url = "ws://localhost:4000/v1/realtime?model=muse-voice-transcribe&intent=transcription"
+    headers = {"Authorization": "Bearer " + os.environ["LITELLM_API_KEY"]}
+    text = ""
+    async with websockets.connect(url, additional_headers=headers) as ws:
+        await ws.recv()
+        await ws.send(json.dumps({
+            "type": "session.update",
+            "session": {"type": "transcription", "audio": {"input": {
+                "format": {"type": "audio/pcm", "rate": 16000},
+                "transcription": {"model": "meta/muse-voice-transcribe-1.0", "language": language},
+                "turn_detection": None,
+            }}},
+        }))
+        await ws.recv()
+        step = 3200  # 100 ms of audio
+        for i in range(0, len(pcm), step):
+            await ws.send(json.dumps({"type": "input_audio_buffer.append",
+                                      "audio": base64.b64encode(pcm[i:i + step]).decode()}))
+            await asyncio.sleep(0.1)
+        await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+        try:
+            while True:
+                e = json.loads(await ws.recv())
+                if e["type"] == "conversation.item.input_audio_transcription.completed":
+                    text += e["transcript"] + " "
+        except websockets.exceptions.ConnectionClosedOK:
+            pass
+    return {"text": text.strip()}
